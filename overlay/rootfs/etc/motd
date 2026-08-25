@@ -1,0 +1,16 @@
+ _  _ ___  _   _ ___  ___ _
+| || / __|| | | | _ \/ __| |
+| __ \__ \| |_| |   /\__ \_|
+|_||_|___(_)___/|_|\_\___(_)
+
+Linux 环境运行于 ikshell · 软件管理: ikpkg / apk
+
+  快速上手:
+    ikpkg update            # 更新软件源
+    ikpkg c                 # 安装 C/C++ 编译器 (gcc/g++/make)
+    ikpkg go                # 安装 Go
+    ikpkg node              # 安装 Node.js + npm
+    ikpkg python            # 安装 Python3 + pip
+    ikpkg all               # 全部安装
+    ikpkg                   # 查看完整帮助
+

@@ -1,0 +1,61 @@
+#!/bin/sh
+# ikpkg — ikshell 软件管理器快捷方式（底层为 Alpine apk）
+set -e
+
+usage() {
+    cat <<'EOF'
+ikpkg — ikshell 软件管理器快捷方式 (底层: apk)
+
+用法:
+  ikpkg <别名或包名>...   安装软件包
+  ikpkg update            更新软件源
+  ikpkg search <关键词>    搜索软件包
+  ikpkg remove <包名>      卸载软件包
+  ikpkg list              列出已安装
+
+常用别名:
+  c  cc  cpp  c++   -> build-base        (gcc / g++ / make)
+  go                 -> go
+  node  nodejs       -> nodejs + npm
+  python  py         -> python3 + py3-pip
+  tmux               -> tmux              (终端多路复用)
+  screen             -> screen            (终端多路复用)
+  all                -> 上述全部, 另加 git vim curl wget tmux
+
+示例:
+  ikpkg c        # 安装 C/C++ 工具链后: gcc hi.c -o hi && ./hi
+  ikpkg go       # go run main.go
+  ikpkg node     # node app.js / npm install
+EOF
+}
+
+[ $# -eq 0 ] && { usage; exit 0; }
+
+cmd="$1"
+shift
+
+case "$cmd" in
+    -h|--help|help) usage; exit 0 ;;
+    update)         exec apk update ;;
+    search)         exec apk search "$@" ;;
+    remove|rm)      exec apk del "$@" ;;
+    list)           exec apk info ;;
+esac
+
+# 别名展开（支持一次传入多个）
+pkgs=""
+for a in "$cmd" "$@"; do
+    case "$a" in
+        c|cc|cpp|c++)  pkgs="$pkgs build-base" ;;
+        go)            pkgs="$pkgs go" ;;
+        node|nodejs)   pkgs="$pkgs nodejs npm" ;;
+        python|py)     pkgs="$pkgs python3 py3-pip" ;;
+        tmux)          pkgs="$pkgs tmux" ;;
+        screen)        pkgs="$pkgs screen" ;;
+        all)           pkgs="$pkgs build-base go nodejs npm python3 py3-pip git vim curl wget tmux" ;;
+        *)             pkgs="$pkgs $a" ;;
+    esac
+done
+
+# shellcheck disable=SC2086
+exec apk add $pkgs

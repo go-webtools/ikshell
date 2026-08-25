@@ -1,0 +1,93 @@
+name: Build & Release
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: macos-14
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout ikshell
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          brew install meson ninja xcodegen
+          pip3 install pillow
+
+      - name: Extract ARM64 engine
+        run: bash scripts/fetch-kernel.sh
+
+      - name: Apply engine patches
+        run: python3 scripts/apply-patches.py
+
+      - name: Build engine static libs
+        run: bash scripts/build-engine.sh
+
+      - name: Generate app icons
+        run: python3 scripts/make-icons.py
+
+      - name: Generate Xcode project
+        run: bash scripts/gen-xcode-project.sh
+
+      - name: Build (unsigned, arm64)
+        run: |
+          xcodebuild -project ikshell.xcodeproj \
+            -scheme ikshell \
+            -arch arm64 \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package IPA
+        run: bash scripts/package-ipa.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ikshell-ipa
+          path: |
+            dist/ikshell.ipa
+            dist/ikshell.ipa.sha256
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## ikshell ${{ github.ref_name }}
+
+          iPad Linux 终端 — Swift UI + Asbestos ARM64 引擎 + Alpine Linux aarch64
+
+          > ⚠️ 未签名 IPA，通过 SideStore / AltStore 侧载安装
+
+          ### 安装
+          1. 下载 `ikshell.ipa`
+          2. 侧载工具安装（SideStore: `+` → 选择 IPA）
+          3. 首次启动自动下载 Alpine rootfs
+          4. 运行 `ikpkg` 查看软件安装帮助
+          EOF
+          gh release create "$GITHUB_REF_NAME" \
+            dist/ikshell.ipa dist/ikshell.ipa.sha256 \
+            --title "ikshell $GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+          || gh release upload "$GITHUB_REF_NAME" \
+            dist/ikshell.ipa dist/ikshell.ipa.sha256 --clobber

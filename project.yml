@@ -1,0 +1,54 @@
+name: ikshell
+options:
+  bundleIdPrefix: com.ikshell
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_OBJC_BRIDGING_HEADER: ikshell/Linux/ikshell-Bridging-Header.h
+    GCC_PREPROCESSOR_DEFINITIONS: GUEST_ARM64=1
+    CODE_SIGNING_ALLOWED: NO
+    DEVELOPMENT_TEAM: ""
+    PRODUCT_BUNDLE_IDENTIFIER: com.ikshell.app
+    INFOPLIST_FILE: ikshell/Resources/Info.plist
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ARCHS: arm64
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+targets:
+  ikshell:
+    type: application
+    platform: iOS
+    sources:
+      - path: ikshell
+        excludes:
+          - "Resources/Info.plist"
+      - path: overlay
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/kernel
+          - $(SRCROOT)/kernel/vdso/arm64
+          - $(SRCROOT)/build/engine
+        LIBRARY_SEARCH_PATHS:
+          - $(SRCROOT)/build/engine
+        OTHER_LDFLAGS:
+          - -lish
+          - -lish_emu
+          - -lfakefs
+          - -lsqlite3
+          - -lpthread
+          - -lz
+        OTHER_CFLAGS:
+          - -DGUEST_ARM64=1
+          - -fno-sanitize=alignment
+          - -Wno-switch
+      configs:
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: -O
+          GCC_OPTIMIZATION_LEVEL: s
