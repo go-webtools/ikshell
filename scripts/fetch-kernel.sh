@@ -73,7 +73,6 @@ cd "$REPO_ROOT"
 # 删除上游的 iOS app 层、构建产物目录、CI、文档
 rm -rf "$KERNEL_DIR/app"
 rm -rf "$KERNEL_DIR/fastlane"
-rm -rf "$KERNEL_DIR/tests"
 rm -rf "$KERNEL_DIR/benchmark"
 rm -rf "$KERNEL_DIR/docs"
 rm -rf "$KERNEL_DIR/scripts"
@@ -91,7 +90,7 @@ rm -f  "$KERNEL_DIR/Gemfile" "$KERNEL_DIR/Gemfile.lock"
 rm -f  "$KERNEL_DIR/README.md" "$KERNEL_DIR/ISSUE_TEMPLATE.md"
 rm -f  "$KERNEL_DIR/SECURITY.md"
 rm -f  "$KERNEL_DIR/LICENSE.md" "$KERNEL_DIR/LICENSE.IOS"
-rm -f  "$KERNEL_DIR/shell.nix" "$KERNEL_DIR/ish-gdb.gdb" "$KERNEL_DIR/ish-lldb.lldb"
+rm -f  "$KERNEL_DIR/shell.nix" "$KERNEL_DIR/ish-lldb.lldb"
 rm -f  "$KERNEL_DIR/.editorconfig" "$KERNEL_DIR/.gitignore" "$KERNEL_DIR/.gitmodules"
 
 # 注意: 以下文件是引擎编译必需，不能删——

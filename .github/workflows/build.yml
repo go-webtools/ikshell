@@ -6,13 +6,19 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: "构建后同时创建 GitHub Release（未签名 IPA）"
+        type: boolean
+        default: true
+        required: false
 
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -23,11 +29,18 @@ jobs:
     steps:
       - name: Checkout ikshell
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install build tools
         run: |
           brew install meson ninja xcodegen
-          pip3 install pillow
+          # Homebrew's Python is PEP 668 externally managed. Keep CI Python
+          # packages isolated instead of writing into the Homebrew prefix.
+          PYTHON_VENV="$RUNNER_TEMP/ikshell-python"
+          python3 -m venv "$PYTHON_VENV"
+          "$PYTHON_VENV/bin/python" -m pip install --disable-pip-version-check --no-input pillow
+          echo "$PYTHON_VENV/bin" >> "$GITHUB_PATH"
 
       - name: Extract ARM64 engine
         run: bash scripts/fetch-kernel.sh
@@ -67,27 +80,45 @@ jobs:
             dist/ikshell.ipa.sha256
           if-no-files-found: error
 
+
+  release:
+    name: Publish IPA
+    needs: build
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('auto-build-{0}', github.run_number) }}
+
+    steps:
+      - name: Download IPA artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ikshell-ipa
+          path: dist
+
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > release-notes.md <<'EOF'
-          ## ikshell ${{ github.ref_name }}
+          ## ikshell ${{ env.RELEASE_TAG }}
 
-          iPad Linux 终端 — Swift UI + Asbestos ARM64 引擎 + Alpine Linux aarch64
+          iPad Linux 终端 - Swift UI + Asbestos ARM64 引擎 + Alpine Linux aarch64
 
-          > ⚠️ 未签名 IPA，通过 SideStore / AltStore 侧载安装
+          > 未签名 IPA，通过 SideStore / AltStore 侧载安装
 
           ### 安装
           1. 下载 `ikshell.ipa`
-          2. 侧载工具安装（SideStore: `+` → 选择 IPA）
+          2. 使用侧载工具安装
           3. 首次启动自动下载 Alpine rootfs
-          4. 运行 `ikpkg` 查看软件安装帮助
           EOF
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" \
             dist/ikshell.ipa dist/ikshell.ipa.sha256 \
-            --title "ikshell $GITHUB_REF_NAME" \
+            --title "ikshell $RELEASE_TAG" \
             --notes-file release-notes.md \
-          || gh release upload "$GITHUB_REF_NAME" \
+          || gh release upload "$RELEASE_TAG" \
             dist/ikshell.ipa dist/ikshell.ipa.sha256 --clobber

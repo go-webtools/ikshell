@@ -18,14 +18,26 @@ settings:
     ARCHS: arm64
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
+# CI 用 xcodebuild -scheme ikshell 构建，必须显式生成共享 scheme
+schemes:
+  ikshell:
+    build:
+      targets:
+        ikshell: all
+
 targets:
   ikshell:
     type: application
     platform: iOS
+    dependencies:
+      - target: libarchive
+        project: kernel/deps/libarchive.xcodeproj
+        link: true
     sources:
       - path: ikshell
         excludes:
           - "Resources/Info.plist"
+      - path: kernel/tools/fakefs.c
       - path: overlay
         type: folder
         buildPhase: resources
@@ -34,6 +46,8 @@ targets:
         HEADER_SEARCH_PATHS:
           - $(SRCROOT)/kernel
           - $(SRCROOT)/kernel/vdso/arm64
+          - $(SRCROOT)/kernel/deps
+          - $(SRCROOT)/kernel/deps/libarchive/libarchive
           - $(SRCROOT)/build/engine
         LIBRARY_SEARCH_PATHS:
           - $(SRCROOT)/build/engine

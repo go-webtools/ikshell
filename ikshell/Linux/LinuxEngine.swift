@@ -1,14 +1,8 @@
 import SwiftUI
 import Foundation
 
-/// Bridge to the Linux emulation engine (ios-linuxkit / Asbestos,
-/// ARM64 guest instruction interpreter + Linux syscall translation)
-///
-/// 引擎 I/O 模型:
-///   - 输出: 引擎通过 C 回调 → handleOutput() → SwiftUI 渲染
-///   - 输入: Swift UI → writeStdin() → kernel_send_input() → guest
-///   - 仿真循环: kernel_run() 在后台线程阻塞, 直到 guest 退出
-class LinuxEngine: ObservableObject {
+/// Coordinates rootfs preparation, the ARM64 guest and the terminal pipe.
+final class LinuxEngine: ObservableObject {
     @Published var isRunning = false
     @Published var rootfsStatus = "未下载"
     @Published var errorMessage: String?
@@ -17,17 +11,10 @@ class LinuxEngine: ObservableObject {
     private var outputBuffer = Data()
     private let outputLock = NSLock()
 
-    // MARK: - 公开方法
-
-    /// 启动引擎: 确保 rootfs → boot → run
     func start() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
-            // 1. 注册回调 (必须在 boot 之前)
-            self.registerCallbacks()
-
-            // 2. 确保 rootfs 已就绪
             let rootfsPath = self.rootfsManager.rootfsPath
             if !self.rootfsManager.isRootfsReady {
                 DispatchQueue.main.async {
@@ -56,29 +43,34 @@ class LinuxEngine: ObservableObject {
         }
     }
 
-    /// 向终端发送输入 (Swift → guest)
     func writeStdin(_ text: String) {
-        guard let data = text.data(using: .utf8) else { return }
-        data.withUnsafeBytes { ptr in
-            _ = kernel_send_input(ptr.baseAddress!.assumingMemoryBound(to: CChar.self), Int32(data.count))
+        guard let data = text.data(using: .utf8), !data.isEmpty else { return }
+        data.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return }
+            _ = kernel_send_input(baseAddress, rawBuffer.count)
         }
     }
 
-    /// 读取并清空输出缓冲区 (guest → Swift 渲染)
     func drainOutput() -> Data {
+        var bytes = [UInt8](repeating: 0, count: 64 * 1024)
+        let count = bytes.withUnsafeMutableBytes { rawBuffer -> Int32 in
+            guard let baseAddress = rawBuffer.baseAddress else { return -1 }
+            return kernel_read_output(baseAddress, rawBuffer.count)
+        }
+        guard count > 0 else { return Data() }
+
         outputLock.lock()
+        outputBuffer.append(contentsOf: bytes.prefix(Int(count)))
         let data = outputBuffer
         outputBuffer.removeAll(keepingCapacity: true)
         outputLock.unlock()
         return data
     }
 
-    /// 设置终端窗口大小
     func setTerminalSize(cols: Int, rows: Int) {
         _ = kernel_set_winsize(Int32(cols), Int32(rows))
     }
 
-    /// 关闭引擎
     func shutdown() {
         kernel_shutdown()
         DispatchQueue.main.async {
@@ -86,39 +78,22 @@ class LinuxEngine: ObservableObject {
         }
     }
 
-    // MARK: - 内部
-
-    private func registerCallbacks() {
-        let ctx = Unmanaged.passUnretained(self).toOpaque()
-
-        let outputCallback: kernel_output_cb = { ctx, data, len in
-            guard let ctx = ctx, let data = data else { return }
-            let engine = Unmanaged<LinuxEngine>.fromOpaque(ctx).takeUnretainedValue()
-            let bytes = UnsafeBufferPointer(start: data, count: Int(len))
-            engine.handleOutput(Data(buffer: bytes))
-        }
-
-        let exitCallback: kernel_exit_cb = { ctx, code in
-            guard let ctx = ctx else { return }
-            let engine = Unmanaged<LinuxEngine>.fromOpaque(ctx).takeUnretainedValue()
-            engine.handleExit(code: code)
-        }
-
-        kernel_set_callbacks(ctx, outputCallback, exitCallback)
-    }
-
     private func bootAndRun(rootfs: String) {
-        let initCmd = "/bin/sh -l"
-
-        let ret = rootfs.withCString { cRootfs in
-            initCmd.withCString { cCmd in
-                kernel_boot(cRootfs, cCmd)
+        let bootResult = rootfs.withCString { cRootfs in
+            kernel_boot(cRootfs)
+        }
+        guard bootResult == 0 else {
+            DispatchQueue.main.async {
+                self.errorMessage = "引擎启动失败 (code: \(bootResult))"
             }
+            return
         }
 
-        if ret != 0 {
+        let shellResult = kernel_start_shell()
+        guard shellResult == 0 else {
+            kernel_shutdown()
             DispatchQueue.main.async {
-                self.errorMessage = "引擎启动失败 (code: \(ret))"
+                self.errorMessage = "Shell 启动失败 (code: \(shellResult))"
             }
             return
         }
@@ -127,26 +102,7 @@ class LinuxEngine: ObservableObject {
             self.isRunning = true
         }
 
-        // 阻塞进入仿真循环——在当前后台线程运行
+        // The emulator owns this background thread until the guest exits.
         kernel_run()
-
-        DispatchQueue.main.async {
-            self.isRunning = false
-        }
-    }
-
-    private func handleOutput(_ data: Data) {
-        outputLock.lock()
-        outputBuffer.append(data)
-        outputLock.unlock()
-    }
-
-    private func handleExit(code: Int) {
-        DispatchQueue.main.async {
-            self.isRunning = false
-            if code != 0 {
-                self.errorMessage = "Linux 进程退出 (code: \(code))"
-            }
-        }
     }
 }

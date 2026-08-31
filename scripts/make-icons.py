@@ -7,7 +7,7 @@ try:
     from PIL import Image, ImageDraw
 except ImportError:
     print("错误: 需要安装 Pillow")
-    print("运行: pip3 install pillow")
+    print("运行: python3 -m venv .venv && .venv/bin/python -m pip install pillow")
     sys.exit(1)
 
 SIZES = [20, 29, 40, 58, 60, 76, 80, 87, 120, 152, 167, 180, 1024]

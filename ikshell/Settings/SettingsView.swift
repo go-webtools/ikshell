@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @EnvironmentObject private var engine: LinuxEngine
     @AppStorage("fontSize") private var fontSize: Double = 14
     @AppStorage("fontName") private var fontName: String = "Menlo"
     @AppStorage("theme") private var theme: String = "dark"
@@ -76,8 +77,4 @@ struct SettingsView: View {
         }
         .navigationViewStyle(.stack)
     }
-}
-
-extension SettingsView {
-    @EnvironmentObject var engine: LinuxEngine
 }

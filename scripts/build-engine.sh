@@ -19,7 +19,7 @@ fi
 
 # 确认 meson 和 ninja 可用
 if ! command -v meson >/dev/null 2>&1; then
-    echo "ERROR: meson 未安装。请运行: pip3 install meson" >&2
+    echo "ERROR: meson 未安装。请运行: brew install meson" >&2
     exit 1
 fi
 if ! command -v ninja >/dev/null 2>&1; then
